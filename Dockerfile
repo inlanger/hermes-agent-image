@@ -42,7 +42,6 @@ RUN git clone -q --depth 1 https://github.com/searxng/searxng $H/searxng/src \
  && rm -rf /tmp/uv \
  && chown -R agent:agent $H/searxng
 
-# what this image holds
-RUN ln -s $H/home-seed $H/home \
- && echo "hermes $(runuser -u agent -- env HOME=$H/userhome HERMES_HOME=$H/home $H/userhome/.local/bin/hermes --version 2>/dev/null | head -1 | tr -s ' ' | cut -c1-60), searxng $(git -C $H/searxng/src rev-parse --short HEAD), built $(date -u +%F)" > $H/VERSION \
- && rm $H/home && cat $H/VERSION
+# what this image holds (git as the owner of the checkouts)
+RUN echo "hermes $(runuser -u agent -- git -C $H/agent describe --tags --always), searxng $(runuser -u agent -- git -C $H/searxng/src rev-parse --short HEAD), built $(date -u +%F)" > $H/VERSION \
+ && cat $H/VERSION
