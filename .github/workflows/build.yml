@@ -1,0 +1,35 @@
+# Builds the image and publishes it to GitHub's container registry: on every push, every night (the newest Hermes and
+# SearXNG), and by hand.
+name: build
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: day
+        run: echo "tag=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          no-cache: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/hermes-agent-image:latest
+            ghcr.io/${{ github.repository_owner }}/hermes-agent-image:${{ steps.day.outputs.tag }}
