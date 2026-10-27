@@ -22,7 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV H=/opt/hermes
 # Hermes' latest release, installed with its own installer; then its runtime moves out of its home and the home becomes
-# home-seed
+# home-seed. Hermes' checkout keeps only its own commit and release tag, without the history or copies of the files
+# (260 MB less): Hermes reads its version and identity from there, and git would fetch anything else from GitHub. The
+# build stops if git sees the checkout any differently than before. The installer's package lists and npm's download
+# cache go too.
 ARG HERMES_RELEASE
 RUN mkdir -p $H/userhome $H/cache \
  && curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/install.sh \
@@ -32,7 +35,23 @@ RUN mkdir -p $H/userhome $H/cache \
  && mv $H/home/tools $H/tools && mv $H/home/installs $H/installs \
  && rm -rf $H/home/cache $H/home/logs \
  && mv $H/home $H/home-seed \
- && rm -rf /tmp/install.sh /tmp/uv \
+ && cd $H/agent \
+ && rev=$(git rev-parse HEAD) && url=$(git remote get-url origin) && before=$(git status --porcelain -uno) \
+ && tags=$(git tag --points-at HEAD | sed 's#.*#+refs/tags/&:refs/tags/&#') \
+ && mv .git /tmp/full.git \
+ && git -c init.defaultBranch=main init -q \
+ && cp /tmp/full.git/config .git/config && cp -a /tmp/full.git/hooks /tmp/full.git/info .git/ \
+ && if [ -e /tmp/full.git/hermes-update.lock ]; then cp -a /tmp/full.git/hermes-update.lock .git/; fi \
+ && git -C /tmp/full.git config uploadpack.allowFilter true \
+ && git -C /tmp/full.git config uploadpack.allowAnySHA1InWant true \
+ && git remote set-url origin file:///tmp/full.git \
+ && git fetch -q --depth 1 --filter=blob:none origin "$rev" $tags \
+ && git remote set-url origin "$url" \
+ && git update-ref --no-deref HEAD "$rev" && git read-tree HEAD && { git update-index -q --refresh || :; } \
+ && after=$(git status --porcelain -uno) \
+ && if [ "$after" != "$before" ]; then printf 'git sees a different checkout:\n%s\n---\n%s\n' "$before" "$after"; exit 1; fi \
+ && echo "Hermes' .git: $(du -sh /tmp/full.git | cut -f1) -> $(du -sh .git | cut -f1), at $(git describe --tags --always)" \
+ && cd / && rm -rf /tmp/full.git /tmp/install.sh /tmp/uv $H/userhome/.npm/_cacache /var/lib/apt/lists/* \
  && chown -R agent:agent $H
 
 # Ubuntu's updates: only the packages that changed since the layers above
