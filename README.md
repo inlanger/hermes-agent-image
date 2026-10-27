@@ -1,10 +1,11 @@
 # hermes-agent-image
 
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) with its browser's system libraries, terminal tools and
-[SearXNG](https://github.com/searxng/searxng), on Ubuntu 24.04. Always the newest Hermes and SearXNG: checked every night
-and rebuilt when either has changed (and each week for Ubuntu's updates), published as
-`ghcr.io/inlanger/hermes-agent-image:latest` (plus a dated tag). Unchanged layers keep their digests, so a host that
-already has the image pulls only what changed.
+[SearXNG](https://github.com/searxng/searxng), on Ubuntu 24.04. Always the newest: Hermes' latest release (the one its
+installer installs), SearXNG's newest commit and Ubuntu's updates, checked every 3 hours and rebuilt when one has
+changed (Ubuntu's updates each week), published as `ghcr.io/inlanger/hermes-agent-image:latest` (plus a dated tag).
+Unchanged layers keep their digests, so a host that already has the image pulls only what changed: the 1.2 GB Hermes
+layer only after a new Hermes release or Ubuntu image, the others are small.
 
 | Path | What |
 |---|---|

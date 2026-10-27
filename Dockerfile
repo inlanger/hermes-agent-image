@@ -1,7 +1,9 @@
 # Hermes Agent with its browser's system libraries, terminal tools and SearXNG, on Ubuntu 24.04.
-# The newest Hermes and SearXNG at build time: rebuilt every night when either has changed (and each week for Ubuntu's
-# updates). The build arguments below are only cache keys: a changed one rebuilds its layer and the ones after it, so
-# an unchanged layer keeps its digest and a host that has it pulls only what changed.
+# The newest of each, checked every 3 hours: Hermes' latest release (what its installer installs), Ubuntu's updates of
+# the week and SearXNG's newest commit. The build arguments below are only cache keys: a changed one rebuilds its layer
+# and the ones after it, so an unchanged layer keeps its digest and a host that has it pulls only what changed. So the
+# layers go from the one that changes least to the one that changes most: the system packages (a new Ubuntu image),
+# Hermes (1.2 GB, a new release every few days), Ubuntu's updates (each week, only the packages that changed), SearXNG.
 # Hermes' runtime (tools: its Python and uv; installs: its extra Python environments) is kept outside HERMES_HOME,
 # in /opt/hermes/tools and /opt/hermes/installs, so a HERMES_HOME can be mounted from elsewhere and link back to them.
 # /opt/hermes/home-seed holds Hermes' default home.
@@ -9,7 +11,6 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
 # the browser's system libraries and fonts, terminal tools, and what the installers need
-ARG APT_WEEK
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git xz-utils wget jq unzip less \
       libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 libcups2t64 libdbus-1-3 libdrm2 \
@@ -20,8 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && useradd -M -d /opt/hermes/userhome -u 10000 -s /bin/sh agent
 
 ENV H=/opt/hermes
-# Hermes, installed with its own installer; then its runtime moves out of its home and the home becomes home-seed
-ARG HERMES_COMMIT
+# Hermes' latest release, installed with its own installer; then its runtime moves out of its home and the home becomes
+# home-seed
+ARG HERMES_RELEASE
 RUN mkdir -p $H/userhome $H/cache \
  && curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/install.sh \
  && HOME=$H/userhome HERMES_HOME=$H/home XDG_CACHE_HOME=$H/cache UV_CACHE_DIR=/tmp/uv \
@@ -32,6 +34,10 @@ RUN mkdir -p $H/userhome $H/cache \
  && mv $H/home $H/home-seed \
  && rm -rf /tmp/install.sh /tmp/uv \
  && chown -R agent:agent $H
+
+# Ubuntu's updates: only the packages that changed since the layers above
+ARG APT_WEEK
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 # SearXNG, with Hermes' Python
 ARG SEARXNG_COMMIT

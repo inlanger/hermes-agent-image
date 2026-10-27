@@ -1,13 +1,14 @@
-# Builds the image and publishes it to GitHub's container registry: on every push, by hand, and every night when
-# Hermes, SearXNG or the Ubuntu image has changed, or a new week has begun (Ubuntu's package updates). A night with
-# nothing new publishes nothing, so hosts keep the image they have. Unchanged layers come from the build cache and keep
-# their digests: a new Hermes means a new Hermes layer (and the ones after it), not a whole new image.
+# Builds the image and publishes it to GitHub's container registry: on every push, by hand, and every 3 hours when
+# Hermes has a new release, SearXNG a new commit or Ubuntu a new image, or a new week has begun (Ubuntu's package
+# updates). A check with nothing new publishes nothing, so hosts keep the image they have. Unchanged layers come from
+# the build cache (kept in the registry, as the :buildcache tag) and keep their digests: a new SearXNG means a new
+# SearXNG layer, not a new 1.2 GB Hermes layer.
 name: build
 on:
   push:
     branches: [main]
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 */3 * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -27,8 +28,19 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       # what the image would be made of now
       - id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          hermes=$(git ls-remote https://github.com/NousResearch/hermes-agent HEAD | cut -f1)
+          # Hermes' latest release, found the way its installer finds the one it installs (its main branch changes
+          # many times a day, its releases every few days)
+          hermes=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/NousResearch/hermes-agent/releases/latest | jq -r .tag_name) || hermes=""
+          stable='^v(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if ! grep -Eq "$stable" <<< "$hermes"; then
+            hermes=$(git ls-remote --tags --refs https://github.com/NousResearch/hermes-agent 'refs/tags/v*' \
+              | sed 's#.*refs/tags/##' | grep -E "$stable" | sort -V | tail -n 1)
+          fi
+          [ -n "$hermes" ] || { echo "Hermes' latest release not found"; exit 1; }
           searxng=$(git ls-remote https://github.com/searxng/searxng HEAD | cut -f1)
           base=$(docker buildx imagetools inspect ubuntu:24.04 --raw | sha256sum | cut -c1-16)
           week=$(date -u +%G-%V)
@@ -61,10 +73,10 @@ jobs:
           push: true
           build-args: |
             APT_WEEK=${{ steps.upstream.outputs.week }}
-            HERMES_COMMIT=${{ steps.upstream.outputs.hermes }}
+            HERMES_RELEASE=${{ steps.upstream.outputs.hermes }}
             SEARXNG_COMMIT=${{ steps.upstream.outputs.searxng }}
-          cache-from: type=gha,scope=image
-          cache-to: type=gha,scope=image,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/hermes-agent-image:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/hermes-agent-image:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
           tags: |
             ghcr.io/${{ github.repository_owner }}/hermes-agent-image:latest
             ghcr.io/${{ github.repository_owner }}/hermes-agent-image:${{ steps.upstream.outputs.day }}
